@@ -142,7 +142,7 @@ simulation <- function(sample_size, num_of_cov, beta_list, Index_list, use_seed=
   sigma_Y_hat_test <- (sum((y_hat_testing - gamma0_mle - gamma1_mle * y_testing)^2) / (length(y_testing)-1))
   sigma_Y_test <- sum((y_testing - X_test_matrix %*% beta_hat_test)^2) / (length(y_testing)-1)
 
-  #mean_BCest <- beta_hat_test
+
   var_BCest <- solve(t(X_val_matrix) %*% X_val_matrix) * (sigma_Y_hat_test + gamma1_mle^2 * sigma_Y_test)
 
   g_xval <- Map('*', beta_list, c(rep(1,length(covariate_validation[[1]])) %>% list(),covariate_validation)) %>% Reduce('+',.)
