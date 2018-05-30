@@ -38,9 +38,9 @@ simulation <- function(sample_size, num_of_cov, beta_list, Index_list, use_seed=
     covariate_validation[[i]] <- covariate_list[[i+1]][unlist(Index_list[9:10])]
   }
 
-  #y <- Map('*', beta_list, covariate_list) %>% Reduce('+',.) + e
-  y <- Map('*', beta_list[1:(length(beta_list) - 1)], covariate_list[1:(length(beta_list) - 1)]) %>%
-       Reduce('+',.) + beta_list[[length(beta_list)]] * covariate_list[[length(beta_list)]]^2 + e
+  y <- Map('*', beta_list, covariate_list) %>% Reduce('+',.) + e
+  #y <- Map('*', beta_list[1:(length(beta_list) - 1)], covariate_list[1:(length(beta_list) - 1)]) %>%
+  #     Reduce('+',.) + beta_list[[length(beta_list)]] * covariate_list[[length(beta_list)]]^2 + e
 
 
   ## partition simulated true Y into testing, training, validation in propotion 6:2:2
@@ -145,10 +145,10 @@ simulation <- function(sample_size, num_of_cov, beta_list, Index_list, use_seed=
   #mean_BCest <- beta_hat_test
   var_BCest <- solve(t(X_val_matrix) %*% X_val_matrix) * (sigma_Y_hat_test + gamma1_mle^2 * sigma_Y_test)
 
-  #g_xval <- Map('*', beta_list, c(rep(1,length(covariate_validation[[1]])) %>% list(),covariate_validation)) %>% Reduce('+',.)
+  g_xval <- Map('*', beta_list, c(rep(1,length(covariate_validation[[1]])) %>% list(),covariate_validation)) %>% Reduce('+',.)
   #g_xval <- Map('*', beta_list[1:(length(beta_list) - 1)], c(rep(1,length(covariate_validation[[1]])) %>% list(), covariate_list[1:(length(beta_list) - 1)])) %>%
        #Reduce('+',.) + beta_list[[length(beta_list)]] * covariate_list[[length(beta_list)-1]]^2
-  g_xval <- beta_list[[1]] + beta_list[[2]] * covariate_validation[[1]]^2
+
   beta_true <- solve(t(X_val_matrix) %*% X_val_matrix) %*% t(X_val_matrix) %*% g_xval
 
   beta_val <- solve(t(X_val_matrix) %*% X_val_matrix) %*% t(X_val_matrix) %*% y_validation
@@ -195,6 +195,7 @@ num_of_cov = 1
 sample_size = 2000
 
 for (beta2 in seq(1,40,1)){
+
   beta_list <- list(1,beta2)
 
   set.seed(2017)
