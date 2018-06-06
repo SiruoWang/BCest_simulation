@@ -1,0 +1,30 @@
+---
+title: "Inference after prediciton simulation"
+output: html_document
+---
+
+
+## Overview
+
+The main goal of this simulation approach is to evaluate our first approach to _inference after prediction_. The basic idea is to use a training set to quantify variation in prediction accuracy, so we can use that to correct inference using predicted outcomes in a new data set.
+
+This simulation involves four different models which we label here. 
+
+1. The ground truth. This represents the "state of nature". We won't know this model in real examples. Here we will simulate data from the model $y_i = g(\vec{x}_i) + \epsilon_i$ where $g()$ is a, possibly nonlinear, function of the covariates $\vec{x}_i$
+2. The inferential model. For simplicity here we are are going to fit a linear model so $y_i = \vec{\beta}^T \vec{x}_i + e_i$. Here some subset of the $\vec{\beta}$ are what we care about when we are doing inference. 
+3. The prediction model. We will fit the prediction model $y_{p} = f(\vec{x}_i)$ to get predicted values. 
+4. The inference after prediction model. Here we fit the model $y_{p} = \vec{\beta}_p \vec{x}_i + e_{pi}$ to estimate the predicted parameters. 
+
+
+### Our goal
+
+
+The goal for our approach is to use a training, testing, and validation set approach to try to correct the inference we do in the predicted data to match as closely as possible what we would have got using the real data. 
+
+So our goals are:
+
+1. To correct our coefficient estimates so that $E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}^*_p | y_p, \vec{x}]$. 
+2. To correct our variance estimates so $Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_{p} | y_p, \vec{x}]$
+3. To correct our test statistics so $t[\hat{\beta} | y, \vec{x}] = t[\hat{\beta}^*_p | y_p, \vec{x}]$. 
+
+To do this we need to create corrected forms of the estimates, variances, and test statistics - denoted by a star. Since using them directly will not work. 
