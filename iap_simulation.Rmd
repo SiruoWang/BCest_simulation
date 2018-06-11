@@ -23,8 +23,8 @@ The goal for our approach is to use a training, testing, and validation set appr
 
 So our goals are:
 
-1. To correct our coefficient estimates so that $E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}^*_p | y_p, \vec{x}]$. 
-2. To correct our variance estimates so $Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_{p} | y_p, \vec{x}]$
+1. To correct our coefficient estimates so that $E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}_p | y_p, \vec{x}]$. 
+2. To correct our variance estimates so $Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_p | y_p, \vec{x}]$
 3. To correct our test statistics so $t[\hat{\beta} | y, \vec{x}] = t[\hat{\beta}^*_p | y_p, \vec{x}]$. 
 
 To do this we need to create corrected forms of the estimates, variances, and test statistics - denoted by a star. Since using them directly will not work. 
