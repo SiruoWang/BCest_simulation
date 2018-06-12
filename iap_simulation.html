@@ -127,22 +127,71 @@ $(document).ready(function () {
 <p>The main goal of this simulation approach is to evaluate our first approach to <em>inference after prediction</em>. The basic idea is to use a training set to quantify variation in prediction accuracy, so we can use that to correct inference using predicted outcomes in a new data set.</p>
 <p>This simulation involves four different models which we label here.</p>
 <ol style="list-style-type: decimal">
-<li>The ground truth. This represents the “state of nature”. We won’t know this model in real examples. Here we will simulate data from the model <span class="math inline">\(y_i = g(\vec{x}_i) + \epsilon_i\)</span> where <span class="math inline">\(g()\)</span> is a, possibly nonlinear, function of the covariates <span class="math inline">\(\vec{x}_i\)</span></li>
-<li>The inferential model. For simplicity here we are are going to fit a linear model so <span class="math inline">\(y_i = \vec{\beta}^T \vec{x}_i + e_i\)</span>. Here some subset of the <span class="math inline">\(\vec{\beta}\)</span> are what we care about when we are doing inference.</li>
-<li>The prediction model. We will fit the prediction model <span class="math inline">\(y_{p} = f(\vec{x}_i)\)</span> to get predicted values.</li>
-<li>The inference after prediction model. Here we fit the model <span class="math inline">\(y_{p} = \vec{\beta}_p \vec{x}_i + e_{pi}\)</span> to estimate the predicted parameters.</li>
+<li>The ground truth. This represents the “state of nature”. We won’t know this model in real examples. Here we will simulate data from the model <span class="math inline">\(y = g(\vec{x}) + e_g\)</span> where <span class="math inline">\(g()\)</span> is a, possibly nonlinear, function of the covariates <span class="math inline">\(\vec{x}\)</span></li>
+<li>The inferential model. For simplicity here we are are going to fit a linear model so <span class="math inline">\(y = \vec{\beta}^T \vec{x}_i + e_i\)</span>. Here some subset of the <span class="math inline">\(\vec{\beta}\)</span> are what we care about when we are doing inference.</li>
+<li>The prediction model. We will fit the prediction model <span class="math inline">\(y_{p} = f(\vec{x})\)</span> to get predicted values.</li>
+<li>The model for the relationship between the predicted and real values which we assume is simple, <span class="math inline">\(y_p = \gamma y + e_p\)</span>.</li>
+<li>The inference after prediction model. Here we fit the model <span class="math inline">\(y_{p} = \vec{\beta}_p \vec{x} + e_{iap}\)</span> then use model 4 to correct the inference.</li>
 </ol>
 <div id="our-goal" class="section level3">
 <h3>Our goal</h3>
 <p>The goal for our approach is to use a training, testing, and validation set approach to try to correct the inference we do in the predicted data to match as closely as possible what we would have got using the real data.</p>
-<p>So our goals are:</p>
+<p>So our goals are to create a corrected estimate <span class="math inline">\(\hat{\beta}^*_p\)</span></p>
 <ol style="list-style-type: decimal">
 <li>To correct our coefficient estimates so that <span class="math inline">\(E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}^*_p | y_p, \vec{x}]\)</span>.</li>
-<li>To correct our variance estimates so <span class="math inline">\(Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_{p} | y_p, \vec{x}]\)</span></li>
+<li>To correct our variance estimates so <span class="math inline">\(Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_p | y_p, \vec{x}]\)</span></li>
 <li>To correct our test statistics so <span class="math inline">\(t[\hat{\beta} | y, \vec{x}] = t[\hat{\beta}^*_p | y_p, \vec{x}]\)</span>.</li>
 </ol>
 <p>To do this we need to create corrected forms of the estimates, variances, and test statistics - denoted by a star. Since using them directly will not work.</p>
 </div>
+<div id="our-approach-to-iap" class="section level3">
+<h3>Our approach to IAP</h3>
+<p>We break the data into training, testing, and validation sets. We assume that in the training and testing set we have both the true outcome <span class="math inline">\(y\)</span> and the predicted outcome <span class="math inline">\(y_p\)</span>. Using these data we do these steps.</p>
+<ol style="list-style-type: decimal">
+<li>We fit a model <span class="math inline">\(y_{p} = f(\vec{x}_{i})\)</span> in the training set.</li>
+<li>In the testing data set we assume that there is a simple relationship between <span class="math inline">\(y\)</span> and <span class="math inline">\(y_p\)</span>. In the case of continuous data we fit the model <span class="math display">\[y_p = \gamma y + e_p \]</span> where <span class="math inline">\(e \sim N(0, \tau^2)\)</span>.</li>
+<li>In the testing set we fit the model (1) <span class="math inline">\(y_p = \beta_p \vec{x} + e_p\)</span> to uncorrected <span class="math inline">\(\hat{\beta}_p\)</span> and the model (2) <span class="math inline">\(y = \beta \vec{x} + e_i\)</span></li>
+<li>In the testing set we estimate the bias by calculating <span class="math inline">\(\hat{b} = \hat{\beta}_p - \hat{\beta}\)</span>.</li>
+<li>In the testing set we estimate <span class="math display">\[Var[
+\hat{\beta}_p | y_p, \vec{x}] = (x^Tx)^{-1}x^T Var(y_p)x(x^Tx)^{-1}\]</span> and we can calculate <span class="math inline">\(Var(y_p) = \hat{\sigma}^2_{iap} + \gamma^2\hat{\sigma}^2_p\)</span></li>
+</ol>
+</div>
+</div>
+<div id="simulation-set-up" class="section level2">
+<h2>Simulation set up</h2>
+<p>First we load all the libraries we will need</p>
+<pre class="r"><code>library(dplyr)</code></pre>
+<pre><code>## 
+## Attaching package: 'dplyr'</code></pre>
+<pre><code>## The following objects are masked from 'package:stats':
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+<p>We are going to start with a simple normal model. We will simulate data according to the formula <span class="math display">\[ y \sim N(g(x_i),\sigma^2_t)\]</span>. Here we fit a more complicated than linear model to generate the data. We will still use a linear model as the basis for our inference.</p>
+<p>Simulate the data with this code, the variable <code>x</code> is the covariate, <code>e</code> is the error, <code>set</code> is which of the training, testing or validation sets the value comes from, and <code>sim</code> is the simulation indicator. <code>ss</code> is the sample size in each set and <code>n_sim</code> is the number of simulations.</p>
+<pre class="r"><code>ss = 100
+n_sim = 100
+
+sim_dat = data.frame(x = rnorm(ss*3),
+                     e = rnorm(ss*3),
+                     set = rep(c(&quot;train&quot;,&quot;testing&quot;,&quot;validation&quot;),each=ss),
+                     sim = 1)
+
+for(i in 2:n_sim){
+  sim_dat = rbind(sim_dat,data.frame(x = rnorm(ss*3),
+                     e = rnorm(ss*3),
+                     set = rep(c(&quot;train&quot;,&quot;testing&quot;,&quot;validation&quot;),each=ss),
+                     sim = i))
+}
+
+## Set the ground truth model
+g = function(x){
+  return(x^2)
+}
+
+sim_dat = sim_dat %&gt;% mutate(y = g(x) + e )</code></pre>
 </div>
 
 

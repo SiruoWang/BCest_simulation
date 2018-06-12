@@ -10,10 +10,11 @@ The main goal of this simulation approach is to evaluate our first approach to _
 
 This simulation involves four different models which we label here. 
 
-1. The ground truth. This represents the "state of nature". We won't know this model in real examples. Here we will simulate data from the model $y_i = g(\vec{x}_i) + \epsilon_i$ where $g()$ is a, possibly nonlinear, function of the covariates $\vec{x}_i$
-2. The inferential model. For simplicity here we are are going to fit a linear model so $y_i = \vec{\beta}^T \vec{x}_i + e_i$. Here some subset of the $\vec{\beta}$ are what we care about when we are doing inference. 
-3. The prediction model. We will fit the prediction model $y_{p} = f(\vec{x}_i)$ to get predicted values. 
-4. The inference after prediction model. Here we fit the model $y_{p} = \vec{\beta}_p \vec{x}_i + e_{pi}$ to estimate the predicted parameters. 
+1. The ground truth. This represents the "state of nature". We won't know this model in real examples. Here we will simulate data from the model $y = g(\vec{x}) + e_g$ where $g()$ is a, possibly nonlinear, function of the covariates $\vec{x}$
+2. The inferential model. For simplicity here we are are going to fit a linear model so $y = \vec{\beta}^T \vec{x}_i + e_i$. Here some subset of the $\vec{\beta}$ are what we care about when we are doing inference. 
+3. The prediction model. We will fit the prediction model $y_{p} = f(\vec{x})$ to get predicted values. 
+4. The model for the relationship between the predicted and real values which we assume is simple, $y_p = \gamma y + e_p$. 
+5. The inference after prediction model. Here we fit the model $y_{p} = \vec{\beta}_p \vec{x} + e_{iap}$ then use model 4 to correct the inference.  
 
 
 ### Our goal
@@ -21,10 +22,77 @@ This simulation involves four different models which we label here.
 
 The goal for our approach is to use a training, testing, and validation set approach to try to correct the inference we do in the predicted data to match as closely as possible what we would have got using the real data. 
 
-So our goals are:
+So our goals are to create a corrected estimate $\hat{\beta}^*_p$ 
 
-1. To correct our coefficient estimates so that $E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}_p | y_p, \vec{x}]$. 
+1. To correct our coefficient estimates so that $E[\hat{\beta} | y, \vec{x}] = E[\hat{\beta}^*_p | y_p, \vec{x}]$. 
 2. To correct our variance estimates so $Var[\hat{\beta} | y, \vec{x}] = Var[\hat{\beta}^*_p | y_p, \vec{x}]$
 3. To correct our test statistics so $t[\hat{\beta} | y, \vec{x}] = t[\hat{\beta}^*_p | y_p, \vec{x}]$. 
 
 To do this we need to create corrected forms of the estimates, variances, and test statistics - denoted by a star. Since using them directly will not work. 
+
+
+### Our approach to IAP
+
+We break the data into training, testing, and validation sets. We assume that in the training and testing set we have both the true outcome $y$ and the predicted outcome $y_p$. Using these data we do these steps. 
+
+1. We fit a model $y_{p} = f(\vec{x}_{i})$ in the training set. 
+2. In the testing data set we assume that there is a simple relationship between $y$ and $y_p$. In the case of continuous data we fit the model $$y_p = \gamma y + e_p $$ where $e \sim N(0, \tau^2)$. 
+3. In the testing set we fit the model (1) $y_p = \beta_p \vec{x} + e_p$ to uncorrected $\hat{\beta}_p$ and the model (2) $y = \beta \vec{x} + e_i$
+4. In the testing set we estimate the bias by calculating $\hat{b} = \hat{\beta}_p - \hat{\beta}$.
+5. In the testing set we estimate $$Var[
+\hat{\beta}_p | y_p, \vec{x}] = (x^Tx)^{-1}x^T Var(y_p)x(x^Tx)^{-1}$$ and we can calculate $Var(y_p) =  \hat{\sigma}^2_{iap} + \gamma^2\hat{\sigma}^2_p$
+
+
+## Simulation set up
+
+First we load all the libraries we will need
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(caret)
+```
+
+
+We are going to start with a simple normal model. We will simulate data according to the formula $$ y \sim N(g(x_i),\sigma^2_t)$$. Here we fit a more complicated than linear model to generate the data. We will still use a linear model as the basis for our inference. 
+
+
+Simulate the data with this code, the variable `x` is the covariate, `e` is the error, `set` is which of the training, testing or validation sets the value comes from, and `sim` is the simulation indicator. `ss` is the sample size in each set and `n_sim` is the number of simulations. 
+
+```{r}
+
+ss = 100
+n_sim = 100
+
+sim_dat = data.frame(x = rnorm(ss*3),
+                     e = rnorm(ss*3),
+                     set = rep(c("train","testing","validation"),each=ss),
+                     sim = 1)
+
+for(i in 2:n_sim){
+  sim_dat = rbind(sim_dat,data.frame(x = rnorm(ss*3),
+                     e = rnorm(ss*3),
+                     set = rep(c("train","testing","validation"),each=ss),
+                     sim = i))
+}
+
+## Set the ground truth model
+g = function(x){
+  return(x^2)
+}
+
+sim_dat = sim_dat %>% mutate(y = g(x) + e )
+
+```
+
+
+## Fit the prediction model
+
+
+Here we need to fit `f(x)` and we'll use the caret package to do this. 
+
+```{r}
+sim_dat_nested = sim_dat %>% group_by(set,sim) %>% nest()
+```
+
+
