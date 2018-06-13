@@ -11,7 +11,7 @@ The main goal of this simulation approach is to evaluate our first approach to _
 This simulation involves four different models which we label here. 
 
 1. The ground truth. This represents the "state of nature". We won't know this model in real examples. Here we will simulate data from the model $y = g(\vec{x}) + e_g$ where $g()$ is a, possibly nonlinear, function of the covariates $\vec{x}$
-2. The inferential model. For simplicity here we are are going to fit a linear model so $y = \vec{\beta}^T \vec{x}_i + e_i$. Here some subset of the $\vec{\beta}$ are what we care about when we are doing inference. 
+2. The inferential model. For simplicity here we are are going to fit a linear model so $y = \vec{\beta}^T \vec{x} + e$. Here some subset of the $\vec{\beta}$ are what we care about when we are doing inference. 
 3. The prediction model. We will fit the prediction model $y_{p} = f(\vec{x})$ to get predicted values. 
 4. The model for the relationship between the predicted and real values which we assume is simple, $y_p = \gamma y + e_p$. 
 5. The inference after prediction model. Here we fit the model $y_{p} = \vec{\beta}_p \vec{x} + e_{iap}$ then use model 4 to correct the inference.  
@@ -37,20 +37,22 @@ We break the data into training, testing, and validation sets. We assume that in
 
 1. We fit a model $y_{p} = f(\vec{x}_{i})$ in the training set. 
 2. In the testing data set we assume that there is a simple relationship between $y$ and $y_p$. In the case of continuous data we fit the model $$y_p = \gamma y + e_p $$ where $e \sim N(0, \tau^2)$. 
-3. In the testing set we fit the model (1) $y_p = \beta_p \vec{x} + e_p$ to uncorrected $\hat{\beta}_p$ and the model (2) $y = \beta \vec{x} + e_i$
+3. In the testing set we fit the model (1) $y_p = \beta_p \vec{x} + e_p$ to uncorrected $\hat{\beta}_p$ and the model (2) $y = \beta \vec{x} + e$
 4. In the testing set we estimate the bias by calculating $\hat{b} = \hat{\beta}_p - \hat{\beta}$.
 5. In the testing set we estimate $$Var[
-\hat{\beta}_p | y_p, \vec{x}] = (x^Tx)^{-1}x^T Var(y_p)x(x^Tx)^{-1}$$ and we can calculate $Var(y_p) =  \hat{\sigma}^2_{iap} + \gamma^2\hat{\sigma}^2_p$
+\hat{\beta}_p | y_p, \vec{x}] = (x^Tx)^{-1}x^T Var(y_p)x(x^Tx)^{-1} = (x^Tx)^{-1} Var(y_p)$$ and we can calculate $Var(y_p) =  \hat{\sigma}^2_p + \gamma^2\hat{\sigma}^2_y$
 
 
 ## Simulation set up
 
 First we load all the libraries we will need
 
-```{r}
+```{r, warning = FALSE}
 library(dplyr)
 library(tidyr)
 library(caret)
+library(ggplot2)
+library(broom)
 ```
 
 
@@ -59,40 +61,160 @@ We are going to start with a simple normal model. We will simulate data accordin
 
 Simulate the data with this code, the variable `x` is the covariate, `e` is the error, `set` is which of the training, testing or validation sets the value comes from, and `sim` is the simulation indicator. `ss` is the sample size in each set and `n_sim` is the number of simulations. 
 
-```{r}
+```{r, warning = FALSE}
 
-ss = 100
-n_sim = 100
+ss = 200
+n_sim = 3
 
 sim_dat = data.frame(x = rnorm(ss*3),
-                     e = rnorm(ss*3),
-                     set = rep(c("train","testing","validation"),each=ss),
+                     e_g = rnorm(ss*3),
+                     set = rep(c("training","testing","validation"),each=ss),
                      sim = 1)
 
 for(i in 2:n_sim){
-  sim_dat = rbind(sim_dat,data.frame(x = rnorm(ss*3),
-                     e = rnorm(ss*3),
-                     set = rep(c("train","testing","validation"),each=ss),
-                     sim = i))
+  sim_dat = rbind(sim_dat, data.frame(x = rnorm(ss*3),
+                  e_g = rnorm(ss*3),
+                  set = rep(c("training","testing","validation"),each=ss),
+                  sim = i))
 }
 
 ## Set the ground truth model
 g = function(x){
-  return(x^2)
+  return(3  *x^2)
 }
 
-sim_dat = sim_dat %>% mutate(y = g(x) + e )
+sim_dat = sim_dat %>% mutate(y = g(x) + e_g)
 
 ```
 
 
 ## Fit the prediction model
 
+Here in the training set, we need to fit `f(x)` and we'll use the caret package to do this. 
 
-Here we need to fit `f(x)` and we'll use the caret package to do this. 
+```{r, warning=FALSE}
+sim_dat_nested = sim_dat %>% nest(-set, -sim)
 
-```{r}
-sim_dat_nested = sim_dat %>% group_by(set,sim) %>% nest()
+sim_dat_nested_train = filter(sim_dat_nested, set=="training") %>%
+  mutate(model = purrr::map(data, ~  train(y ~ x, data = ., method = 'rf', importance = TRUE)))
 ```
+
+
+## Get predicted values
+
+In the testing and validation set, we fit the prediction model $$y_p=f(\vec{x})$$ to get predicted values `pred`.
+
+```{r, warning = FALSE}
+sim_dat_nested_tv = lapply(1:n_sim,function(x){
+  filter(sim_dat_nested,(set == "testing" | set == "validation") & sim == x) %>%
+    mutate(pred = purrr::map(data, ~  predict(sim_dat_nested_train$model[[x]], data = .)))}) 
+
+sim_dat_tv = sim_dat_nested_tv %>% do.call(rbind, .) %>% unnest()
+
+```
+
+## Correct our coefficient estimates
+
+Here in the testing and validation sets, we fit the IAP model $$y_p = \vec{\beta}_p \vec{x} + e_{iap}$$ using predicted value `pred` and covariate `x`, and we also fit the inferential model $$y = \vec{\beta}^T \vec{x} + e$$ using true value `y` and covariate `x`. In the testing set, we calculate the `bias` in the testing set, and then correct our coefficient estimates in the validation set. `beta_p` is the corredted estimate $\hat{\beta}^*_p$.
+
+
+```{r, warning = FALSE}
+sim_dat_tv_nested = sim_dat_tv %>% nest(-set, -sim) %>% 
+  mutate(yp_x = purrr::map(data, ~ tidy(lm(pred ~ x, data = .)))) %>%
+  mutate(y_x = purrr::map(data, ~ tidy(lm(y ~ x, data = .))))
+
+sim_dat_test_nested = filter(sim_dat_tv_nested, set == "testing") %>% 
+  mutate(bias = purrr::map(sim, function(x) {.$yp_x[[x]][-1,"estimate"] - .$y_x[[x]][-1,"estimate"]}))
+
+sim_dat_val_nested = filter(sim_dat_tv_nested, set == "validation") %>%
+  mutate(beta_BC = purrr::map(sim, function(x) {.$yp_x[[x]][-1,2] - sim_dat_test_nested$bias[[x]]}))
+```
+
+## Plot the relationship between the predicted and real values in the testing set.
+
+The model for the relationship between the predicted and real values which we assume is simple, $$y_p=\gamma y+e_p$$
+
+```{r, warning = FALSE}
+sim_dat_test = filter(sim_dat_tv, set == "testing") %>% nest(-sim)
+sim_dat_test = sim_dat_test %>% 
+  mutate(gg = purrr::map(data, ~ ggplot(data = ., aes(y, pred)) +
+                           geom_point(color = densCols(.$y, .$pred, bandwidth = 2), size = 2) + 
+                           geom_abline(linetype="dashed",color="red",size=1)))
+
+sim_dat_test$gg[[1]]      
+
+```
+
+## Correct variance estimates
+
+ In the testing set we estimate $$Var[
+\hat{\beta}_p | y_p, \vec{x}] = (x^Tx)^{-1}x^T Var(y_p)x(x^Tx)^{-1}$$ and we can calculate $Var(y_p) =  \hat{\sigma}^2_{iap} + \gamma^2\hat{\sigma}^2_p$
+
+
+```{r, warning= FALSE}
+sim_dat_test_nested = sim_dat_test_nested %>%  
+  mutate(yp_y = purrr::map(data, ~ tidy(lm(pred ~ y, data = .)))) %>%
+  mutate(sigma_yx = purrr::map(data, ~ glance(lm(y ~ x, data = .)) %>% select(sigma))) %>%
+  mutate(sigma_ypy = purrr::map(data, ~ glance(lm(pred ~ y, data = .)) %>% select(sigma)))
+
+
+var_yp <- function(sim){
+  gamma1 = sim_dat_test_nested$yp_y[[sim]][-1,"estimate"]
+  sigma_p = sim_dat_test_nested$sigma_ypy[[sim]]
+  sigma_y = sim_dat_test_nested$sigma_yx[[sim]]
+  
+  return(sigma_p + gamma1*sigma_y)
+}
+
+
+sim_dat_val_nested = sim_dat_val_nested %>% 
+  mutate(var_beta_BC = purrr::map(sim, function(sim){ x = cbind(rep(1, ss), .$data[[sim]] %>% select(x)) %>% as.matrix()
+  var_beta_BC = solve(t(x) %*% x) * var_yp(sim)
+  return(var_beta_BC) })) %>% 
+  mutate(se_beta_BC = purrr::map(sim, function(sim){ var_beta_BC[[sim]] %>% sqrt()}))
+              
+```
+
+
+## Find t statistics 
+
+Here we find t statistics $t_{BC}$ for testing null hypothesisL $$H_0 : \beta = 0$$ using bias corrected estimator `beta_BC` and standard error of the estimator `se_beta_BC`.
+
+$$
+t_{BC} = \frac{\hat{\beta}_{BCest} -0} {se_{\hat{\beta}_{est}}}
+$$
+
+```{r, warning= FALSE}
+
+sim_dat_val_nested = sim_dat_val_nested %>% mutate(t_BC = purrr::map(sim, function(x){ .$beta_BC[[x]] / .$se_beta_BC[[x]]}))
+
+```
+
+## Compare a few more statistics
+
+1. $t_{BC}$ calculated above.
+2. $t_{iap}$ comes from fitting the inference after prediction model $y_{p} = \vec{\beta}_p \vec{x} + e_{iap}$.
+3. $t_{true}$ comes from fitting the model $y = \vec{\beta} \vec{x} + e$, but in reality we cannot obtain t_true$ because true values y are unknown in the validation set.
+4. $t_{iap-BCbeta}$ comes from fitting the inference after prediction model $y_{p} = \vec{\beta}_p \vec{x} + e_{iap}$ but uses bias corrected $\beta$.
+5. $t_{iap-BCse}$ comes from fitting the inference after prediction model $y_{p} = \vec{\beta}_p \vec{x} + e_{iap}$ but uses bias corrected standard error.
+
+```{r, warning= FALSE}
+sim_dat_val_nested = sim_dat_val_nested %>% 
+  mutate(t_iap = purrr::map(sim, function(x){ .$yp_x[[x]][-1,"statistic"]})) %>%
+  mutate(t_true = purrr::map(sim, function(x){ .$y_x[[x]][-1,"statistic"]})) %>%
+  mutate(t_iap_BCbeta = purrr::map(sim, function(x){ t_BC = .$beta_BC[[x]] / .$yp_x[[x]][-1,"std.error"]})) %>% 
+  mutate(t_iap_BCse = purrr::map(sim, function(x){ t_BC = .$yp_x[[x]][-1,"estimate"] / .$se_beta_BC[[x]]}))
+
+sim_dat_val_nested$t_BC
+sim_dat_val_nested$t_iap
+sim_dat_val_nested$t_true
+sim_dat_val_nested$t_iap_BCbeta
+sim_dat_val_nested$t_iap_BCse
+```
+
+
+
+
+
 
 
