@@ -53,6 +53,7 @@ library(tidyr)
 library(caret)
 library(ggplot2)
 library(broom)
+library(reshape2)
 ```
 
 
@@ -64,7 +65,7 @@ Simulate the data with this code, the variable `x` is the covariate, `e` is the 
 ```{r, warning = FALSE}
 
 ss = 200
-n_sim = 3
+n_sim = 20
 
 sim_dat = data.frame(x = rnorm(ss*3),
                      e_g = rnorm(ss*3),
@@ -80,7 +81,7 @@ for(i in 2:n_sim){
 
 ## Set the ground truth model
 g = function(x){
-  return(3  *x^2)
+  return(3  * x)
 }
 
 sim_dat = sim_dat %>% mutate(y = g(x) + e_g)
@@ -205,12 +206,23 @@ sim_dat_val_nested = sim_dat_val_nested %>%
   mutate(t_iap_BCbeta = purrr::map(sim, function(x){ t_BC = .$beta_BC[[x]] / .$yp_x[[x]][-1,"std.error"]})) %>% 
   mutate(t_iap_BCse = purrr::map(sim, function(x){ t_BC = .$yp_x[[x]][-1,"estimate"] / .$se_beta_BC[[x]]}))
 
-sim_dat_val_nested$t_BC
-sim_dat_val_nested$t_iap
-sim_dat_val_nested$t_true
-sim_dat_val_nested$t_iap_BCbeta
-sim_dat_val_nested$t_iap_BCse
 ```
+
+## Plot t statistics
+
+```{r, warning= FALSE}
+t_df <- sim_dat_val_nested %>% select(t_true, t_iap, t_BC, t_iap_BCbeta, t_iap_BCse) %>% unnest() %>% data.frame()
+colnames(t_df) <- c("t_true","t_iap","t_iap_BCbeta","t_BC", "t_iap_BCse")
+t_df <- t_df %>% melt()
+ 
+t_plot <- ggplot(t_df, aes(x = variable, y = value, fill=variable)) +
+                       geom_boxplot() +
+                       ggtitle("compare t statistics")
+t_plot
+```
+
+
+
 
 
 
